@@ -21,17 +21,12 @@ import (
 func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 
 	// Check if target directory exists if not create
-	stat, err := os.Stat(targetDirectory)
-	if err == nil && stat.IsDir() {
+	if _, err := os.Stat(targetDirectory); os.IsNotExist(err) {
 		err := os.MkdirAll(targetDirectory, 0755)
 		if err != nil {
 			log.Println("Unable to create target directory")
 			return err
 		}
-	}
-	if err != nil {
-		log.Println("error creating target directory, check if it's a directory. Error:", err)
-		return err
 	}
 
 	entityList, err := createEntityList(midKey, sgpKey)
