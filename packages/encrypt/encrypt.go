@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 
 	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/armor"
 )
 
 // Data encrypts the data passed
@@ -90,7 +91,11 @@ OUTER:
 	for _, file := range fileList {
 		// Encrypt message using public keys
 		pgpBuf := bytes.NewBuffer(nil)
-		w, err := openpgp.Encrypt(pgpBuf, entityList, nil, nil, nil)
+		arm, err := armor.Encode(pgpBuf, "PGP MESSAGE", nil)
+		if err != nil {
+			return err
+		}
+		w, err := openpgp.Encrypt(arm, entityList, nil, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -126,11 +131,17 @@ OUTER:
 			log.Println("error closing pgp buffer for file: ", file, ". Error: ", err, "continuing with other files")
 			continue OUTER
 		}
+		arm.Close()
+		if err != nil {
+			log.Println("error closing armor. Error: ", err, "continuing with other files")
+			continue OUTER
+		}
 
 		// Write the encrypted data to file
 		_, fullFileName := filepath.Split(file)
 		exttension := filepath.Ext(file)
-		outFileName := strings.TrimSuffix(fullFileName, exttension)
+		fileName := strings.TrimSuffix(fullFileName, exttension)
+		outFileName := fileName + ".pgp"
 		outFile := filepath.Join(targetDirectory, outFileName)
 		fo, err := os.Create(outFile)
 		if err != nil {

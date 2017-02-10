@@ -2,6 +2,7 @@ package decrypt
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"path/filepath"
@@ -23,6 +24,7 @@ func Data(privateKey, fileName, targetDirectory string) error {
 		return err
 	}
 	result, err := ioutil.ReadFile(fileName)
+	fmt.Println("result: ", result)
 
 	md, err := openpgp.ReadMessage(bytes.NewBuffer(result), entitylist, nil, nil)
 	if err != nil {
