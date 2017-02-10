@@ -30,7 +30,7 @@ func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 		}
 	}
 	if err != nil {
-		log.Println("error creating target directory, check if it's a directory")
+		log.Println("error creating target directory, check if it's a directory. Error:", err)
 		return err
 	}
 
