@@ -19,41 +19,60 @@ import (
 // Data encrypts the data passed
 func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 
+	entityList, err := createEntityList(midKey, sgpKey)
+	if err != nil {
+		log.Println("error creating entity list")
+		return err
+	}
+
+	fileList, err := getFiles(sourceDirectory)
+	if err != nil {
+		log.Println("error parsing the sourceDirectory to get files list")
+		return err
+	}
+
+	err = encryptDataAndWrite(fileList, entityList, targetDirectory)
+	if err != nil {
+		log.Println("error encryting and writing")
+		return err
+	}
+
+	return nil
+}
+
+func createEntityList(midKey, sgpKey string) (openpgp.EntityList, error) {
 	//Read the midland key
 	midBuf, err := ioutil.ReadFile(midKey)
 	if err != nil {
 		log.Println("error reading midland key file: ", midKey)
-		return err
+		return nil, err
 	}
 	entitylistMid, err := openpgp.ReadArmoredKeyRing(bytes.NewBuffer(midBuf))
 	if err != nil {
 		log.Println("error reading the midland key")
-		return err
+		return nil, err
 	}
 
 	//Read the safeguard key
 	sgpBuf, err := ioutil.ReadFile(sgpKey)
 	if err != nil {
 		log.Println("error reading safeguard key file: ", sgpKey)
-		return err
+		return nil, err
 	}
 	entitylistSgp, err := openpgp.ReadArmoredKeyRing(bytes.NewBuffer(sgpBuf))
 	if err != nil {
 		log.Println("error reading the safeguard key")
-		return err
+		return nil, err
 	}
 	entitylist := append(entitylistMid, entitylistSgp...)
 
-	// Encrypt message using public keys
-	pgpBuf := new(bytes.Buffer)
-	w, err := openpgp.Encrypt(pgpBuf, entitylist, nil, nil, nil)
-	if err != nil {
-		return err
-	}
+	return entitylist, nil
+}
 
-	// Get all files in directory
+// Get all non pgp files in directory
+func getFiles(sourceDirectory string) ([]string, error) {
 	fileList := []string{}
-	err = filepath.Walk(sourceDirectory, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(sourceDirectory, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() && !strings.Contains(path, ".pgp") {
 			fileList = append(fileList, path)
 		}
@@ -61,23 +80,28 @@ func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 	})
 	if err != nil {
 		log.Println("error parsing directory")
-		return err
+		return nil, err
 	}
+	return fileList, nil
+}
 
-	//Read files and ecrypt all the non pgp files
+func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targetDirectory string) error {
 OUTER:
 	for _, file := range fileList {
+		// Encrypt message using public keys
+		pgpBuf := bytes.NewBuffer(nil)
+		w, err := openpgp.Encrypt(pgpBuf, entityList, nil, nil, nil)
+		if err != nil {
+			return err
+		}
 
 		// Reading file contents
 		fs, err := os.Open(file)
-
 		if err != nil {
 			log.Println("error opening: ", file, ". Error: ", err, "continuing with other files")
 			continue OUTER
 		}
-
 		defer fs.Close()
-		var result []byte
 		bufferedReader := bufio.NewReader(fs)
 		buf := make([]byte, 1024)
 		for {
@@ -89,16 +113,14 @@ OUTER:
 				log.Println("error reading file: ", file, ". Error: ", err, "continuing with other files")
 				continue OUTER
 			}
-			result = append(result, buf[0:n]...)
+			// Encrypting the file contents
+			_, err = w.Write(buf[0:n])
+			if err != nil {
+				log.Println("error writing pgpbytes for file: ", file, ". Error: ", err, "continuing with other files")
+				continue OUTER
+			}
 		}
-		//filenam := filepath.Join(targetDirectory, "testencrypt")
-		//err = ioutil.WriteFile(filenam, result, 0644)
-		// Encrypting the file contents
-		_, err = w.Write(result)
-		if err != nil {
-			log.Println("error writing pgpbytes for file: ", file, ". Error: ", err, "continuing with other files")
-			continue OUTER
-		}
+
 		err = w.Close()
 		if err != nil {
 			log.Println("error closing pgp buffer for file: ", file, ". Error: ", err, "continuing with other files")
@@ -108,8 +130,7 @@ OUTER:
 		// Write the encrypted data to file
 		_, fullFileName := filepath.Split(file)
 		exttension := filepath.Ext(file)
-		fileName := strings.TrimSuffix(fullFileName, exttension)
-		outFileName := fileName + ".pgp"
+		outFileName := strings.TrimSuffix(fullFileName, exttension)
 		outFile := filepath.Join(targetDirectory, outFileName)
 		fo, err := os.Create(outFile)
 		if err != nil {
@@ -118,11 +139,10 @@ OUTER:
 		}
 		defer fo.Close()
 		bufferedWriter := bufio.NewWriter(fo)
-		//bytes, err := ioutil.ReadAll(pgpBuf)
-		//str := base64.StdEncoding.EncodeToString(bytes)
-		fmt.Fprintln(bufferedWriter, pgpBuf)
+		fmt.Fprintln(bufferedWriter, pgpBuf.String())
 		bufferedWriter.Flush()
 	}
 	log.Println("Encrypted all the data")
+
 	return nil
 }
