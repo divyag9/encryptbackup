@@ -3,6 +3,7 @@ package encrypt
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,11 +22,16 @@ import (
 func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 
 	// Check if target directory exists if not create
-	if _, err := os.Stat(targetDirectory); os.IsNotExist(err) {
+	stat, err := os.Stat(targetDirectory)
+	if os.IsNotExist(err) {
 		err := os.MkdirAll(targetDirectory, 0755)
 		if err != nil {
 			log.Println("Unable to create target directory")
 			return err
+		}
+	} else {
+		if !stat.IsDir() {
+			return errors.New("The target directory passed is not a directory")
 		}
 	}
 
