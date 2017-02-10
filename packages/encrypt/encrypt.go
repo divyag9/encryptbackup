@@ -89,7 +89,11 @@ func getFiles(sourceDirectory string) ([]string, error) {
 func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targetDirectory string) error {
 	// Check if target directory exists if not createEntityList
 	if _, err := os.Stat(targetDirectory); os.IsNotExist(err) {
-		os.MkdirAll(targetDirectory, os.ModeDir)
+		err := os.MkdirAll(targetDirectory, os.ModeDir)
+		if err != nil {
+			log.Println("Unable to create target directory")
+			return err
+		}
 	}
 	//Encrypt data and write
 OUTER:
