@@ -20,6 +20,15 @@ import (
 // Data encrypts the data passed
 func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 
+	// Check if target directory exists if not create
+	if _, err := os.Stat(targetDirectory); os.IsNotExist(err) {
+		err := os.MkdirAll(targetDirectory, 0755)
+		if err != nil {
+			log.Println("Unable to create target directory")
+			return err
+		}
+	}
+
 	entityList, err := createEntityList(midKey, sgpKey)
 	if err != nil {
 		log.Println("error creating entity list")
@@ -87,14 +96,7 @@ func getFiles(sourceDirectory string) ([]string, error) {
 }
 
 func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targetDirectory string) error {
-	// Check if target directory exists if not createEntityList
-	if _, err := os.Stat(targetDirectory); os.IsNotExist(err) {
-		err := os.MkdirAll(targetDirectory, os.ModeDir)
-		if err != nil {
-			log.Println("Unable to create target directory")
-			return err
-		}
-	}
+
 	//Encrypt data and write
 OUTER:
 	for _, file := range fileList {
@@ -115,7 +117,7 @@ OUTER:
 			log.Println("error opening: ", file, ". Error: ", err, "continuing with other files")
 			continue OUTER
 		}
-		defer fs.Close()
+
 		bufferedReader := bufio.NewReader(fs)
 		buf := make([]byte, 1024)
 		for {
@@ -134,16 +136,20 @@ OUTER:
 				continue OUTER
 			}
 		}
-
+		fs.Close()
+		if err != nil {
+			log.Println("error closing read filehandle. Error: ", err)
+			return err
+		}
 		err = w.Close()
 		if err != nil {
-			log.Println("error closing pgp buffer for file: ", file, ". Error: ", err, "continuing with other files")
-			continue OUTER
+			log.Println("error closing pgp buffer for file: ", file, ". Error: ", err)
+			return err
 		}
 		arm.Close()
 		if err != nil {
-			log.Println("error closing armor. Error: ", err, "continuing with other files")
-			continue OUTER
+			log.Println("error closing armor. Error: ", err)
+			return err
 		}
 
 		// Write the encrypted data to file
@@ -157,10 +163,11 @@ OUTER:
 			log.Println("error creating output file: ", outFile, ". Error: ", err, "continuing with other files")
 			continue OUTER
 		}
-		defer fo.Close()
+
 		bufferedWriter := bufio.NewWriter(fo)
 		fmt.Fprintln(bufferedWriter, pgpBuf.String())
 		bufferedWriter.Flush()
+		fo.Close()
 	}
 	log.Println("Encrypted all the data")
 
