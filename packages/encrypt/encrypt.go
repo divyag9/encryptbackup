@@ -87,6 +87,11 @@ func getFiles(sourceDirectory string) ([]string, error) {
 }
 
 func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targetDirectory string) error {
+	// Check if target directory exists if not createEntityList
+	if _, err := os.Stat(targetDirectory); os.IsNotExist(err) {
+		os.MkdirAll(targetDirectory, os.ModeDir)
+	}
+	//Encrypt data and write
 OUTER:
 	for _, file := range fileList {
 		// Encrypt message using public keys
