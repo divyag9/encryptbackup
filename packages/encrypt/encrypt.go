@@ -105,86 +105,65 @@ func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targe
 
 	//Encrypt data and write
 OUTER:
-	for _, file := range fileList {
+	for _, sourceFile := range fileList {
 		// Encrypt message using public keys
 		pgpBuf := bytes.NewBuffer(nil)
 		arm, err := armor.Encode(pgpBuf, "PGP MESSAGE", nil)
 		if err != nil {
 			return err
 		}
-		w, err := openpgp.Encrypt(arm, entityList, nil, nil, nil)
+		pgpWriter, err := openpgp.Encrypt(arm, entityList, nil, nil, nil)
 		if err != nil {
 			return err
 		}
 
 		// Reading file contents
-		fs, err := os.Open(file)
+		err = readSourceFileAndEncrypt(sourceFile, &pgpWriter)
+		pgpWriter.Close()
+		arm.Close()
 		if err != nil {
-			log.Println("error opening: ", file, ". Error: ", err, "continuing with other files")
 			continue OUTER
 		}
 
-		bufferedReader := bufio.NewReader(fs)
-		buf := make([]byte, 1024)
-		for {
-			n, err := bufferedReader.Read(buf[0:])
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				log.Println("error reading file: ", file, ". Error: ", err, "continuing with other files")
-				continue OUTER
-			}
-			// Encrypting the file contents
-			_, err = w.Write(buf[0:n])
-			if err != nil {
-				log.Println("error writing pgpbytes for file: ", file, ". Error: ", err, "continuing with other files")
-				continue OUTER
-			}
-		}
-		fs.Close()
-		if err != nil {
-			log.Println("error closing read filehandle. Error: ", err)
-			return err
-		}
-		err = w.Close()
-		if err != nil {
-			log.Println("error closing pgp buffer for file: ", file, ". Error: ", err)
-			return err
-		}
-		arm.Close()
-		if err != nil {
-			log.Println("error closing armor. Error: ", err)
-			return err
-		}
-
 		// Write the encrypted data to file
-		finalTargetDirectory, targetFileName := getTargetDirectoryWithSourceAndFileName(file, targetDirectory)
-		outFile := filepath.Join(finalTargetDirectory, targetFileName)
-		if _, err := os.Stat(outFile); os.IsNotExist(err) {
-			// Create the target directory with the source base if not present
-			if _, err := os.Stat(finalTargetDirectory); os.IsNotExist(err) {
-				err := os.MkdirAll(finalTargetDirectory, 0777)
-				if err != nil {
-					log.Println("Unable to create target directory with source base: ", finalTargetDirectory, ". Error: ", err, "continuing with other files")
-					continue OUTER
-				}
-			}
-			fo, err := os.Create(outFile)
-			if err != nil {
-				log.Println("error creating output file: ", outFile, ". Error: ", err, "continuing with other files")
-				continue OUTER
-			}
-
-			bufferedWriter := bufio.NewWriter(fo)
-			fmt.Fprintln(bufferedWriter, pgpBuf.String())
-			bufferedWriter.Flush()
-			fo.Close()
-		} else {
-			log.Println("File was already encrypted: ", file, " at: ", outFile)
+		finalTargetDirectory, targetFileName := getTargetDirectoryWithSourceAndFileName(sourceFile, targetDirectory)
+		err = writeEncryptedData(sourceFile, targetFileName, finalTargetDirectory, pgpBuf)
+		if err != nil {
+			continue OUTER
 		}
 	}
 	log.Println("Encrypted all the data")
+
+	return nil
+}
+
+func readSourceFileAndEncrypt(sourceFile string, pgpWriter *io.WriteCloser) error {
+	fs, err := os.Open(sourceFile)
+	if err != nil {
+		log.Println("error opening: ", sourceFile, ". Error: ", err, "continuing with other files")
+		return err
+	}
+	bufferedReader := bufio.NewReader(fs)
+	buf := make([]byte, 1024)
+	for {
+		n, err := bufferedReader.Read(buf[0:])
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Println("error reading file: ", sourceFile, ". Error: ", err, "continuing with other files")
+			fs.Close()
+			return err
+		}
+		// Encrypting the file contents
+		_, err = (*pgpWriter).Write(buf[0:n])
+		if err != nil {
+			log.Println("error writing pgpbytes for file: ", sourceFile, ". Error: ", err, "continuing with other files")
+			fs.Close()
+			return err
+		}
+	}
+	fs.Close()
 
 	return nil
 }
@@ -199,5 +178,32 @@ func getTargetDirectoryWithSourceAndFileName(file, targetDirectory string) (stri
 		sourceDirectoryPath = strings.Split(sourceDirectoryPath, ":")[1]
 	}
 	finalTargetDirectory := filepath.Join(targetDirectory, sourceDirectoryPath)
-	return finalTargetDirectory, outFileName
+	targetFileName := filepath.Join(finalTargetDirectory, outFileName)
+	return finalTargetDirectory, targetFileName
+}
+
+func writeEncryptedData(sourceFile string, targetFile string, finalTargetDirectory string, pgpBuf *bytes.Buffer) error {
+	if _, err := os.Stat(targetFile); os.IsNotExist(err) {
+		// Create the target directory with the source base if not present
+		if _, err := os.Stat(finalTargetDirectory); os.IsNotExist(err) {
+			err := os.MkdirAll(finalTargetDirectory, 0777)
+			if err != nil {
+				log.Println("Unable to create target directory with source base: ", finalTargetDirectory, ". Error: ", err, "continuing with other files")
+				return err
+			}
+		}
+		fo, err := os.Create(targetFile)
+		if err != nil {
+			log.Println("error creating output file: ", targetFile, ". Error: ", err, "continuing with other files")
+			return err
+		}
+		bufferedWriter := bufio.NewWriter(fo)
+		fmt.Fprintln(bufferedWriter, pgpBuf.String())
+		bufferedWriter.Flush()
+		fo.Close()
+	} else {
+		log.Println("File was already encrypted: ", sourceFile, " at: ", targetFile)
+	}
+
+	return nil
 }
