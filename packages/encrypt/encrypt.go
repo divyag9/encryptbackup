@@ -164,16 +164,20 @@ OUTER:
 		fileName := strings.TrimSuffix(fullFileName, exttension)
 		outFileName := fileName + ".pgp"
 		outFile := filepath.Join(targetDirectory, outFileName)
-		fo, err := os.Create(outFile)
-		if err != nil {
-			log.Println("error creating output file: ", outFile, ". Error: ", err, "continuing with other files")
-			continue OUTER
-		}
+		if _, err := os.Stat(outFile); os.IsNotExist(err) {
+			fo, err := os.Create(outFile)
+			if err != nil {
+				log.Println("error creating output file: ", outFile, ". Error: ", err, "continuing with other files")
+				continue OUTER
+			}
 
-		bufferedWriter := bufio.NewWriter(fo)
-		fmt.Fprintln(bufferedWriter, pgpBuf.String())
-		bufferedWriter.Flush()
-		fo.Close()
+			bufferedWriter := bufio.NewWriter(fo)
+			fmt.Fprintln(bufferedWriter, pgpBuf.String())
+			bufferedWriter.Flush()
+			fo.Close()
+		} else {
+			log.Println("File was already encrypted: ", file, " at: ", outFile)
+		}
 	}
 	log.Println("Encrypted all the data")
 
