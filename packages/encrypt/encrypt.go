@@ -24,7 +24,7 @@ func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 	// Check if target directory exists if not create
 	stat, err := os.Stat(targetDirectory)
 	if os.IsNotExist(err) {
-		err := os.MkdirAll(targetDirectory, 0755)
+		err := os.MkdirAll(targetDirectory, 0777)
 		if err != nil {
 			log.Println("Unable to create target directory")
 			return err
@@ -41,7 +41,7 @@ func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 		return err
 	}
 
-	fileList, err := getFiles(sourceDirectory)
+	fileList, err := getAllNonPgpFilePathsFromSource(sourceDirectory)
 	if err != nil {
 		log.Println("error parsing the sourceDirectory to get files list")
 		return err
@@ -86,7 +86,7 @@ func createEntityList(midKey, sgpKey string) (openpgp.EntityList, error) {
 }
 
 // Get all non pgp files in directory
-func getFiles(sourceDirectory string) ([]string, error) {
+func getAllNonPgpFilePathsFromSource(sourceDirectory string) ([]string, error) {
 	fileList := []string{}
 	err := filepath.Walk(sourceDirectory, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() && !strings.Contains(path, ".pgp") {
@@ -159,18 +159,14 @@ OUTER:
 		}
 
 		// Write the encrypted data to file
-		sourceDirectoryPath, fullFileName := filepath.Split(file)
-		exttension := filepath.Ext(file)
-		fileName := strings.TrimSuffix(fullFileName, exttension)
-		outFileName := fileName + ".pgp"
-		outFile := filepath.Join(targetDirectory, filepath.Base(sourceDirectoryPath), outFileName)
+		finalTargetDirectory, targetFileName := getTargetDirectoryWithSourceAndFileName(file, targetDirectory)
+		outFile := filepath.Join(finalTargetDirectory, targetFileName)
 		if _, err := os.Stat(outFile); os.IsNotExist(err) {
 			// Create the target directory with the source base if not present
-			dirToCreate := filepath.Join(targetDirectory, filepath.Base(sourceDirectoryPath))
-			if _, err := os.Stat(dirToCreate); os.IsNotExist(err) {
-				err := os.MkdirAll(dirToCreate, 0755)
+			if _, err := os.Stat(finalTargetDirectory); os.IsNotExist(err) {
+				err := os.MkdirAll(finalTargetDirectory, 0777)
 				if err != nil {
-					log.Println("Unable to create target directory with source base: ", dirToCreate, ". Error: ", err, "continuing with other files")
+					log.Println("Unable to create target directory with source base: ", finalTargetDirectory, ". Error: ", err, "continuing with other files")
 					continue OUTER
 				}
 			}
@@ -191,4 +187,17 @@ OUTER:
 	log.Println("Encrypted all the data")
 
 	return nil
+}
+
+func getTargetDirectoryWithSourceAndFileName(file, targetDirectory string) (string, string) {
+	sourceDirectoryPath, fullFileName := filepath.Split(file)
+	exttension := filepath.Ext(file)
+	fileName := strings.TrimSuffix(fullFileName, exttension)
+	outFileName := fileName + ".pgp"
+	// In case of windows path removing the driver info
+	if strings.Contains(sourceDirectoryPath, ":") {
+		sourceDirectoryPath = strings.Split(sourceDirectoryPath, ":")[1]
+	}
+	finalTargetDirectory := filepath.Join(targetDirectory, sourceDirectoryPath)
+	return finalTargetDirectory, outFileName
 }
