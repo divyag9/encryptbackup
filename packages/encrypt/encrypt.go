@@ -21,18 +21,9 @@ import (
 // Data encrypts the data passed
 func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 
-	// Check if target directory exists if not create
-	stat, err := os.Stat(targetDirectory)
-	if os.IsNotExist(err) {
-		err := os.MkdirAll(targetDirectory, 0777)
-		if err != nil {
-			log.Println("Unable to create target directory")
-			return err
-		}
-	} else {
-		if !stat.IsDir() {
-			return errors.New("The target directory passed is not a directory")
-		}
+	err := checkSourceAndTargetDirectories(sourceDirectory, targetDirectory)
+	if err != nil {
+		return err
 	}
 
 	entityList, err := createEntityList(midKey, sgpKey)
@@ -51,6 +42,29 @@ func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 	if err != nil {
 		log.Println("error encryting and writing")
 		return err
+	}
+
+	return nil
+}
+
+// Check if source and target directory exists. Create if target does not exist
+func checkSourceAndTargetDirectories(sourceDirectory, targetDirectory string) error {
+	if _, err := os.Stat(sourceDirectory); os.IsNotExist(err) {
+		log.Println("Source directory does not exist")
+		return err
+	}
+
+	stat, err := os.Stat(targetDirectory)
+	if os.IsNotExist(err) {
+		err := os.MkdirAll(targetDirectory, 0777)
+		if err != nil {
+			log.Println("Unable to create target directory")
+			return err
+		}
+	} else {
+		if !stat.IsDir() {
+			return errors.New("The target directory passed is not a directory")
+		}
 	}
 
 	return nil
