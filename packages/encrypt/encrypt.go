@@ -159,12 +159,21 @@ OUTER:
 		}
 
 		// Write the encrypted data to file
-		_, fullFileName := filepath.Split(file)
+		sourceDirectoryPath, fullFileName := filepath.Split(file)
 		exttension := filepath.Ext(file)
 		fileName := strings.TrimSuffix(fullFileName, exttension)
 		outFileName := fileName + ".pgp"
-		outFile := filepath.Join(targetDirectory, outFileName)
+		outFile := filepath.Join(targetDirectory, filepath.Base(sourceDirectoryPath), outFileName)
 		if _, err := os.Stat(outFile); os.IsNotExist(err) {
+			// Create the target directory with the source base if not present
+			dirToCreate := filepath.Join(targetDirectory, filepath.Base(sourceDirectoryPath))
+			if _, err := os.Stat(dirToCreate); os.IsNotExist(err) {
+				err := os.MkdirAll(dirToCreate, 0755)
+				if err != nil {
+					log.Println("Unable to create target directory with source base: ", dirToCreate, ". Error: ", err, "continuing with other files")
+					continue OUTER
+				}
+			}
 			fo, err := os.Create(outFile)
 			if err != nil {
 				log.Println("error creating output file: ", outFile, ". Error: ", err, "continuing with other files")
