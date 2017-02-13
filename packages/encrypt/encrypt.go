@@ -104,7 +104,6 @@ func getAllNonPgpFilePathsFromSource(sourceDirectory string) ([]string, error) {
 func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targetDirectory string) error {
 
 	//Encrypt data and write
-OUTER:
 	for _, sourceFile := range fileList {
 		// Encrypt message using public keys
 		pgpBuf := bytes.NewBuffer(nil)
@@ -122,14 +121,14 @@ OUTER:
 		pgpWriter.Close()
 		arm.Close()
 		if err != nil {
-			continue OUTER
+			continue
 		}
 
 		// Write the encrypted data to file
 		finalTargetDirectory, targetFileName := getTargetDirectoryWithSourceAndFileName(sourceFile, targetDirectory)
 		err = writeEncryptedData(sourceFile, targetFileName, finalTargetDirectory, pgpBuf)
 		if err != nil {
-			continue OUTER
+			continue
 		}
 	}
 	log.Println("Encrypted all the data")
