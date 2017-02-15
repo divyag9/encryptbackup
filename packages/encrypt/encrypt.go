@@ -6,11 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"log"
 
 	"io/ioutil"
 
@@ -138,8 +137,7 @@ func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targe
 			if err != nil {
 				continue
 			}
-		} else {
-			log.Println("File was already encrypted: ", sourceFile, " at: ", targetFileName)
+			log.Println("Encrypted file: ", sourceFile, " at: ", targetFileName)
 		}
 	}
 
