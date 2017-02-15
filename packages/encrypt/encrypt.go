@@ -38,7 +38,7 @@ func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 
 	err = encryptDataAndWrite(fileList, entityList, targetDirectory)
 	if err != nil {
-		return fmt.Errorf("error encryting and writing: %s", err.Error())
+		return fmt.Errorf("Error encryting and writing: %s", err.Error())
 	}
 
 	return nil
@@ -112,33 +112,36 @@ func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targe
 
 	//Encrypt data and write
 	for _, sourceFile := range fileList {
-		// Encrypt message using public keys
-		pgpBuf := bytes.NewBuffer(nil)
-		arm, err := armor.Encode(pgpBuf, "PGP MESSAGE", nil)
-		if err != nil {
-			return err
-		}
-		pgpWriter, err := openpgp.Encrypt(arm, entityList, nil, nil, nil)
-		if err != nil {
-			return err
-		}
-
-		// Reading file contents
-		err = readSourceFileAndEncrypt(sourceFile, &pgpWriter)
-		pgpWriter.Close()
-		arm.Close()
-		if err != nil {
-			continue
-		}
-
-		// Write the encrypted data to file
 		finalTargetDirectory, targetFileName := getTargetDirectoryWithSourceAndFileName(sourceFile, targetDirectory)
-		err = writeEncryptedData(sourceFile, targetFileName, finalTargetDirectory, pgpBuf)
-		if err != nil {
-			continue
+		if _, err := os.Stat(targetFileName); os.IsNotExist(err) {
+			// Encrypt message using public keys
+			pgpBuf := bytes.NewBuffer(nil)
+			arm, err := armor.Encode(pgpBuf, "PGP MESSAGE", nil)
+			if err != nil {
+				return err
+			}
+			pgpWriter, err := openpgp.Encrypt(arm, entityList, nil, nil, nil)
+			if err != nil {
+				return err
+			}
+
+			// Reading file contents
+			err = readSourceFileAndEncrypt(sourceFile, &pgpWriter)
+			pgpWriter.Close()
+			arm.Close()
+			if err != nil {
+				continue
+			}
+
+			// Write the encrypted data to file
+			err = writeEncryptedData(sourceFile, targetFileName, finalTargetDirectory, pgpBuf)
+			if err != nil {
+				continue
+			}
+		} else {
+			log.Println("File was already encrypted: ", sourceFile, " at: ", targetFileName)
 		}
 	}
-	log.Println("Encrypted all the data")
 
 	return nil
 }
@@ -171,9 +174,9 @@ func readSourceFileAndEncrypt(sourceFile string, pgpWriter *io.WriteCloser) erro
 	return nil
 }
 
-func getTargetDirectoryWithSourceAndFileName(file, targetDirectory string) (string, string) {
-	sourceDirectoryPath, fullFileName := filepath.Split(file)
-	exttension := filepath.Ext(file)
+func getTargetDirectoryWithSourceAndFileName(sourceFile, targetDirectory string) (string, string) {
+	sourceDirectoryPath, fullFileName := filepath.Split(sourceFile)
+	exttension := filepath.Ext(sourceFile)
 	fileName := strings.TrimSuffix(fullFileName, exttension)
 	outFileName := fileName + ".pgp"
 	// In case of windows path removing the driver info
@@ -186,25 +189,21 @@ func getTargetDirectoryWithSourceAndFileName(file, targetDirectory string) (stri
 }
 
 func writeEncryptedData(sourceFile string, targetFile string, finalTargetDirectory string, pgpBuf *bytes.Buffer) error {
-	if _, err := os.Stat(targetFile); os.IsNotExist(err) {
-		// Create the target directory with the source base if not present
-		if _, err := os.Stat(finalTargetDirectory); os.IsNotExist(err) {
-			err := os.MkdirAll(finalTargetDirectory, 0777)
-			if err != nil {
-				return fmt.Errorf("Unable to create target directory with source base: %s. Error: %s. Continuing with other files", finalTargetDirectory, err)
-			}
-		}
-		fo, err := os.Create(targetFile)
+	// Create the target directory with the source base if not present
+	if _, err := os.Stat(finalTargetDirectory); os.IsNotExist(err) {
+		err := os.MkdirAll(finalTargetDirectory, 0777)
 		if err != nil {
-			return fmt.Errorf("Error creating output file: %s. Error: %s. Continuing with other files", targetFile, err)
+			return fmt.Errorf("Unable to create target directory with source base: %s. Error: %s. Continuing with other files", finalTargetDirectory, err)
 		}
-		bufferedWriter := bufio.NewWriter(fo)
-		fmt.Fprintln(bufferedWriter, pgpBuf.String())
-		bufferedWriter.Flush()
-		fo.Close()
-	} else {
-		log.Println("File was already encrypted: ", sourceFile, " at: ", targetFile)
 	}
+	fo, err := os.Create(targetFile)
+	if err != nil {
+		return fmt.Errorf("Error creating output file: %s. Error: %s. Continuing with other files", targetFile, err)
+	}
+	bufferedWriter := bufio.NewWriter(fo)
+	fmt.Fprintln(bufferedWriter, pgpBuf.String())
+	bufferedWriter.Flush()
+	fo.Close()
 
 	return nil
 }

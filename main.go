@@ -24,4 +24,5 @@ func main() {
 	if err != nil {
 		log.Println("Error occured while encrypting: ", err)
 	}
+	log.Println("Done Encrypting")
 }
