@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 
 	"github.com/divyag9/encryptbackup/packages/encrypt"
@@ -22,7 +23,7 @@ func main() {
 
 	err := encrypt.Data(*sourceDirectory, *targetDirectory, *sgpKey, *midKey)
 	if err != nil {
-		log.Println("Error occured while encrypting: ", err)
+		fmt.Println("Error occured while encrypting: ", err)
 	}
-	log.Println("Done Encrypting")
+	fmt.Println("Done Encrypting")
 }
