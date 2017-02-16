@@ -119,7 +119,9 @@ func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targe
 			if err != nil {
 				return err
 			}
-			pgpWriter, err := openpgp.Encrypt(arm, entityList, nil, nil, nil)
+			fileHints := &openpgp.FileHints{}
+			fileHints.IsBinary = true
+			pgpWriter, err := openpgp.Encrypt(arm, entityList, nil, fileHints, nil)
 			if err != nil {
 				return err
 			}
@@ -150,9 +152,9 @@ func readSourceFileAndEncrypt(sourceFile string, pgpWriter *io.WriteCloser) erro
 		return fmt.Errorf("Error opening file: %s. Error: %s. Continuing with other files", sourceFile, err)
 	}
 	bufferedReader := bufio.NewReader(fs)
-	buf := make([]byte, 1024)
+	buf := make([]byte, 4096)
 	for {
-		n, err := bufferedReader.Read(buf[0:])
+		n, err := bufferedReader.Read(buf)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -161,7 +163,7 @@ func readSourceFileAndEncrypt(sourceFile string, pgpWriter *io.WriteCloser) erro
 			return fmt.Errorf("Error reading file: %s. Error: %s. Continuing with other files", sourceFile, err)
 		}
 		// Encrypting the file contents
-		_, err = (*pgpWriter).Write(buf[0:n])
+		_, err = (*pgpWriter).Write(buf[:n])
 		if err != nil {
 			fs.Close()
 			return fmt.Errorf("Error writing pgpbytes for file: %s. Error: %s. Continuing with other files", sourceFile, err)
@@ -199,7 +201,7 @@ func writeEncryptedData(sourceFile string, targetFile string, finalTargetDirecto
 		return fmt.Errorf("Error creating output file: %s. Error: %s. Continuing with other files", targetFile, err)
 	}
 	bufferedWriter := bufio.NewWriter(fo)
-	fmt.Fprintln(bufferedWriter, pgpBuf.String())
+	bufferedWriter.Write(pgpBuf.Bytes())
 	bufferedWriter.Flush()
 	fo.Close()
 
