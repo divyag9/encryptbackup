@@ -24,6 +24,7 @@ func main() {
 	err := encrypt.Data(*sourceDirectory, *targetDirectory, *sgpKey, *midKey)
 	if err != nil {
 		fmt.Println("Error occured while encrypting: ", err)
+	} else {
+		fmt.Println("Done encrypting")
 	}
-	fmt.Println("Done Encrypting")
 }
