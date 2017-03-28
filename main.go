@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 
 	"github.com/divyag9/encryptbackup/packages/encrypt"
 )
@@ -18,7 +17,7 @@ func main() {
 	flag.Parse()
 
 	if *sourceDirectory == "" || *targetDirectory == "" || *sgpKey == "" || *midKey == "" {
-		log.Fatal("please pass the required flags: -sd(source directory) -td(target directory) -sgpkey(safeguard key) -midkey(midland key)")
+		panic("please pass the required flags: -sd(source directory) -td(target directory) -sgpkey(safeguard key) -midkey(midland key)")
 	}
 
 	err := encrypt.Data(*sourceDirectory, *targetDirectory, *sgpKey, *midKey)

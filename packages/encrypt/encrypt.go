@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,7 +126,7 @@ func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targe
 
 				// Write the encrypted data to file
 				err = writeEncryptedData(sourceFile, targetFileName, finalTargetDirectory, pgpBuf)
-				log.Println("Encrypted file: ", sourceFile, " at: ", targetFileName)
+				fmt.Println("Encrypted file: ", sourceFile, " at: ", targetFileName)
 
 				channel <- err
 			}
