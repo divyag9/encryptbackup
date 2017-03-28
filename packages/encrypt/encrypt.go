@@ -27,18 +27,15 @@ func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 
 	entityList, err := createEntityList(midKey, sgpKey)
 	if err != nil {
-		return fmt.Errorf("Error creating entity list: %s", err.Error())
+		return fmt.Errorf("error creating entity list: %s", err.Error())
 	}
 
 	fileList, err := getAllNonPgpFilePathsFromSource(sourceDirectory)
 	if err != nil {
-		return fmt.Errorf("Error parsing the sourceDirectory to get all non pgp files: %s", err.Error())
+		return fmt.Errorf("error parsing the sourceDirectory to get all non pgp files: %s", err.Error())
 	}
 
-	err = encryptDataAndWrite(fileList, entityList, targetDirectory)
-	if err != nil {
-		return fmt.Errorf("Error encryting and writing: %s", err.Error())
-	}
+	encryptDataAndWrite(fileList, entityList, targetDirectory)
 
 	return nil
 }
@@ -46,18 +43,18 @@ func Data(sourceDirectory, targetDirectory, sgpKey, midKey string) error {
 // Check if source and target directory exists. Create if target does not exist
 func checkSourceAndTargetDirectories(sourceDirectory, targetDirectory string) error {
 	if _, err := os.Stat(sourceDirectory); os.IsNotExist(err) {
-		return fmt.Errorf("Source directory does not exist: %s", err.Error())
+		return fmt.Errorf("source directory does not exist: %s", err.Error())
 	}
 
 	stat, err := os.Stat(targetDirectory)
 	if os.IsNotExist(err) {
 		err := os.MkdirAll(targetDirectory, 0777)
 		if err != nil {
-			return fmt.Errorf("Unable to create target directory: %s", err.Error())
+			return fmt.Errorf("unable to create target directory: %s", err.Error())
 		}
 	} else {
 		if !stat.IsDir() {
-			return errors.New("The target directory passed is not a directory")
+			return errors.New("the target directory passed is not a directory")
 		}
 	}
 
@@ -83,11 +80,11 @@ func createEntityList(midKey, sgpKey string) (openpgp.EntityList, error) {
 func getEntityListForKey(key string) (openpgp.EntityList, error) {
 	buf, err := ioutil.ReadFile(key)
 	if err != nil {
-		return nil, fmt.Errorf("Error reading key file: %s. Error: %s", key, err.Error())
+		return nil, fmt.Errorf("error reading key file: %s; error: %s", key, err.Error())
 	}
 	entitylist, err := openpgp.ReadArmoredKeyRing(bytes.NewBuffer(buf))
 	if err != nil {
-		return nil, fmt.Errorf("Error creating entity list for key: %s. Error: %s", key, err.Error())
+		return nil, fmt.Errorf("error creating entity list for key: %s; error: %s", key, err.Error())
 	}
 	return entitylist, nil
 }
@@ -107,49 +104,46 @@ func getAllNonPgpFilePathsFromSource(sourceDirectory string) ([]string, error) {
 	return fileList, nil
 }
 
-func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targetDirectory string) error {
-
+func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targetDirectory string) {
 	//Encrypt data and write
+	bufferLength := len(fileList)
+	channel := make(chan error, bufferLength)
 	for _, sourceFile := range fileList {
-		finalTargetDirectory, targetFileName := getTargetDirectoryWithSourceAndFileName(sourceFile, targetDirectory)
-		if _, err := os.Stat(targetFileName); os.IsNotExist(err) {
-			// Encrypt message using public keys
-			pgpBuf := bytes.NewBuffer(nil)
-			arm, err := armor.Encode(pgpBuf, "PGP MESSAGE", nil)
-			if err != nil {
-				return err
-			}
-			fileHints := &openpgp.FileHints{}
-			fileHints.IsBinary = true
-			pgpWriter, err := openpgp.Encrypt(arm, entityList, nil, fileHints, nil)
-			if err != nil {
-				return err
-			}
+		go func(sourceFile string) {
+			finalTargetDirectory, targetFileName := getTargetDirectoryWithSourceAndFileName(sourceFile, targetDirectory)
+			if _, err := os.Stat(targetFileName); os.IsNotExist(err) {
+				// Encrypt message using public keys
+				pgpBuf := bytes.NewBuffer(nil)
+				arm, err := armor.Encode(pgpBuf, "PGP MESSAGE", nil)
 
-			// Reading file contents
-			err = readSourceFileAndEncrypt(sourceFile, &pgpWriter)
-			pgpWriter.Close()
-			arm.Close()
-			if err != nil {
-				continue
-			}
+				fileHints := &openpgp.FileHints{}
+				fileHints.IsBinary = true
+				pgpWriter, err := openpgp.Encrypt(arm, entityList, nil, fileHints, nil)
 
-			// Write the encrypted data to file
-			err = writeEncryptedData(sourceFile, targetFileName, finalTargetDirectory, pgpBuf)
-			if err != nil {
-				continue
+				// Reading file contents
+				err = readSourceFileAndEncrypt(sourceFile, &pgpWriter)
+				pgpWriter.Close()
+				arm.Close()
+
+				// Write the encrypted data to file
+				err = writeEncryptedData(sourceFile, targetFileName, finalTargetDirectory, pgpBuf)
+				log.Println("Encrypted file: ", sourceFile, " at: ", targetFileName)
+
+				channel <- err
 			}
-			log.Println("Encrypted file: ", sourceFile, " at: ", targetFileName)
-		}
+		}(sourceFile)
 	}
 
-	return nil
+	// wait for goroutines to finish
+	for i := 0; i < bufferLength; i++ {
+		fmt.Println(<-channel)
+	}
 }
 
 func readSourceFileAndEncrypt(sourceFile string, pgpWriter *io.WriteCloser) error {
 	fs, err := os.Open(sourceFile)
 	if err != nil {
-		return fmt.Errorf("Error opening file: %s. Error: %s. Continuing with other files", sourceFile, err)
+		return fmt.Errorf("error opening file: %s; error: %s", sourceFile, err)
 	}
 	bufferedReader := bufio.NewReader(fs)
 	buf := make([]byte, 4096)
@@ -160,13 +154,13 @@ func readSourceFileAndEncrypt(sourceFile string, pgpWriter *io.WriteCloser) erro
 				break
 			}
 			fs.Close()
-			return fmt.Errorf("Error reading file: %s. Error: %s. Continuing with other files", sourceFile, err)
+			return fmt.Errorf("error reading file: %s; error: %s", sourceFile, err)
 		}
 		// Encrypting the file contents
 		_, err = (*pgpWriter).Write(buf[:n])
 		if err != nil {
 			fs.Close()
-			return fmt.Errorf("Error writing pgpbytes for file: %s. Error: %s. Continuing with other files", sourceFile, err)
+			return fmt.Errorf("error writing pgpbytes for file: %s; error: %s", sourceFile, err)
 		}
 	}
 	fs.Close()
@@ -193,12 +187,12 @@ func writeEncryptedData(sourceFile string, targetFile string, finalTargetDirecto
 	if _, err := os.Stat(finalTargetDirectory); os.IsNotExist(err) {
 		err := os.MkdirAll(finalTargetDirectory, 0777)
 		if err != nil {
-			return fmt.Errorf("Unable to create target directory with source base: %s. Error: %s. Continuing with other files", finalTargetDirectory, err)
+			return fmt.Errorf("unable to create target directory with source base: %s; error: %s", finalTargetDirectory, err)
 		}
 	}
 	fo, err := os.Create(targetFile)
 	if err != nil {
-		return fmt.Errorf("Error creating output file: %s. Error: %s. Continuing with other files", targetFile, err)
+		return fmt.Errorf("error creating output file: %s; error: %s", targetFile, err)
 	}
 	bufferedWriter := bufio.NewWriter(fo)
 	bufferedWriter.Write(pgpBuf.Bytes())
