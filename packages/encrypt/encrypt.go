@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"io/ioutil"
 
@@ -104,38 +105,62 @@ func getAllNonPgpFilePathsFromSource(sourceDirectory string) ([]string, error) {
 }
 
 func encryptDataAndWrite(fileList []string, entityList openpgp.EntityList, targetDirectory string) {
-	//Encrypt data and write
-	bufferLength := len(fileList)
-	channel := make(chan error, bufferLength)
+	var wg sync.WaitGroup
+	errorResponses := make(chan error)
 	for _, sourceFile := range fileList {
-		go func(sourceFile string) {
-			finalTargetDirectory, targetFileName := getTargetDirectoryWithSourceAndFileName(sourceFile, targetDirectory)
-			if _, err := os.Stat(targetFileName); os.IsNotExist(err) {
-				// Encrypt message using public keys
-				pgpBuf := bytes.NewBuffer(nil)
-				arm, err := armor.Encode(pgpBuf, "PGP MESSAGE", nil)
-
-				fileHints := &openpgp.FileHints{}
-				fileHints.IsBinary = true
-				pgpWriter, err := openpgp.Encrypt(arm, entityList, nil, fileHints, nil)
-
-				// Reading file contents
-				err = readSourceFileAndEncrypt(sourceFile, &pgpWriter)
-				pgpWriter.Close()
-				arm.Close()
-
-				// Write the encrypted data to file
-				err = writeEncryptedData(sourceFile, targetFileName, finalTargetDirectory, pgpBuf)
-				fmt.Println("Encrypted file: ", sourceFile, " at: ", targetFileName)
-
-				channel <- err
-			}
-		}(sourceFile)
+		wg.Add(1)
+		go encryptAndWrite(sourceFile, entityList, targetDirectory, errorResponses, &wg)
 	}
 
-	// wait for goroutines to finish
-	for i := 0; i < bufferLength; i++ {
-		fmt.Println(<-channel)
+	go func() {
+		for response := range errorResponses {
+			if response != nil {
+				fmt.Println(response)
+			}
+		}
+	}()
+
+	wg.Wait()
+}
+
+func encryptAndWrite(sourceFile string, entityList openpgp.EntityList, targetDirectory string, errorResponses chan error, wg *sync.WaitGroup) {
+	defer wg.Done()
+	finalTargetDirectory, targetFileName := getTargetDirectoryWithSourceAndFileName(sourceFile, targetDirectory)
+	if _, err := os.Stat(targetFileName); os.IsNotExist(err) {
+		// Encrypt message using public keys
+		pgpBuf := bytes.NewBuffer(nil)
+		arm, err := armor.Encode(pgpBuf, "PGP MESSAGE", nil)
+		if err != nil {
+			errorResponses <- err
+			return
+		}
+
+		fileHints := &openpgp.FileHints{}
+		fileHints.IsBinary = true
+		pgpWriter, err := openpgp.Encrypt(arm, entityList, nil, fileHints, nil)
+		if err != nil {
+			errorResponses <- err
+			return
+		}
+
+		// Reading file contents
+		err = readSourceFileAndEncrypt(sourceFile, &pgpWriter)
+		if err != nil {
+			pgpWriter.Close()
+			arm.Close()
+			errorResponses <- err
+			return
+		}
+		pgpWriter.Close()
+		arm.Close()
+
+		// Write the encrypted data to file
+		err = writeEncryptedData(sourceFile, targetFileName, finalTargetDirectory, pgpBuf)
+		if err != nil {
+			errorResponses <- err
+			return
+		}
+		fmt.Println("Encrypted file: ", sourceFile, " at: ", targetFileName)
 	}
 }
 
